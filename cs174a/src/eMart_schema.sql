@@ -1,4 +1,4 @@
-
+-- eMart schema
 
 CREATE TABLE SystemRules (
     rule_name VARCHAR2(50) PRIMARY KEY,
