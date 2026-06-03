@@ -12,7 +12,7 @@ CREATE TABLE Inventory (
         UNIQUE (manufacturer, model_number),
 
     CONSTRAINT check_inventory_quantity
-        CHECK (quantity >= 0 AND quantity < max_stock_level),
+        CHECK (quantity >= 0 AND quantity <= max_stock_level),
 
     CONSTRAINT check_min_stock
         CHECK (min_stock_level >= 0),
