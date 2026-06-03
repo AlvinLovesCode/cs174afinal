@@ -50,6 +50,7 @@ CREATE TABLE Orders (
     total_amount NUMBER(10, 2),
     shipping_fee NUMBER(10, 2),
     discount_amount NUMBER(10, 2),
+    is_deleted NUMBER(1) DEFAULT 0,
     FOREIGN KEY (customer_id) REFERENCES Customers(customer_id)
 );
 
@@ -63,3 +64,12 @@ CREATE TABLE OrderItems (
     FOREIGN KEY (order_id) REFERENCES Orders(order_id),
     FOREIGN KEY (stock_number) REFERENCES Products(stock_number)
 );
+
+-- 7. Managers
+CREATE TABLE Managers (
+    manager_id VARCHAR2(50) PRIMARY KEY,
+    password VARCHAR2(100)
+);
+
+INSERT INTO Managers (manager_id, password) VALUES ('admin', 'admin');
+COMMIT;
