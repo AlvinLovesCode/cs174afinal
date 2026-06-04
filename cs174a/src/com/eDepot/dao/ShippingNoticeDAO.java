@@ -77,6 +77,8 @@ public class ShippingNoticeDAO {
         String updateInventory =
             "UPDATE Inventory SET quantity = quantity + ?, replenishment = NVL(replenishment, 0) - ? " +
             "WHERE manufacturer = ? AND model_number = ?";
+        String deleteItems = "DELETE FROM ShippingNoticeItem WHERE notice_id = ?";
+        String deleteNotice = "DELETE FROM ShippingNotice WHERE notice_id = ?";
 
         List<ShippingItem> applied = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection()) {
@@ -106,6 +108,16 @@ public class ShippingNoticeDAO {
                         pstmt.addBatch();
                     }
                     pstmt.executeBatch();
+                }
+
+                // Remove the notice so the same shipment can't be received again.
+                try (PreparedStatement pstmt = conn.prepareStatement(deleteItems)) {
+                    pstmt.setInt(1, noticeId);
+                    pstmt.executeUpdate();
+                }
+                try (PreparedStatement pstmt = conn.prepareStatement(deleteNotice)) {
+                    pstmt.setInt(1, noticeId);
+                    pstmt.executeUpdate();
                 }
 
                 conn.commit();

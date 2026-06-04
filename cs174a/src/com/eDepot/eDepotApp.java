@@ -151,7 +151,7 @@ public class eDepotApp {
     }
 
     // Prompt until the user enters an unused stock number in the XXnnnnn format: two
-    private static String readStockNumber(String prompt) {
+    private static String readStockNumber(String prompt) throws SQLException {
         while (true) {
             System.out.print(prompt);
             String value = scanner.nextLine().trim().toUpperCase();
