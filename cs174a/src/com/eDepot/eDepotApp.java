@@ -64,10 +64,10 @@ public class eDepotApp {
             String mfr = scanner.nextLine();
             System.out.print("  Model number: ");
             String model = scanner.nextLine();
-            int qty = readInt("  Quantity: ");
 
-            ShippingItem item = new ShippingItem(mfr, model, qty);
+            ShippingItem item = new ShippingItem(mfr, model, 0);
             String existing = inventoryDAO.findStockNumber(mfr, model);
+            int maxLevel;
             if (existing == null) {
                 System.out.println("  New product. Please provide inventory details.");
                 item.isNew = true;
@@ -76,9 +76,12 @@ public class eDepotApp {
                 item.maxStockLevel = readInt("    Maximum stock level: ");
                 System.out.print("    Location (e.g. A12): ");
                 item.location = scanner.nextLine();
+                maxLevel = item.maxStockLevel;
             } else {
                 item.stockNumber = existing;
+                maxLevel = inventoryDAO.getMaxStockLevel(existing);
             }
+            item.quantity = readQuantity("  Quantity: ", maxLevel);
             items.add(item);
         }
 
@@ -156,6 +159,22 @@ public class eDepotApp {
             }
             if (inventoryDAO.getByStockNumber(value) != null) {
                 System.out.println("  Stock number " + value + " is already in use. Please enter a different one.");
+                continue;
+            }
+            return value;
+        }
+    }
+
+    // Read a quantity, re-prompting until it does not exceed the item's max stock level.
+    private static int readQuantity(String prompt, int maxLevel) {
+        while (true) {
+            int value = readInt(prompt);
+            if (value <= 0) {
+                System.out.println("  Quantity must be greater than zero.");
+                continue;
+            }
+            if (maxLevel >= 0 && value > maxLevel) {
+                System.out.println("  Quantity cannot exceed the max stock level of " + maxLevel + ".");
                 continue;
             }
             return value;

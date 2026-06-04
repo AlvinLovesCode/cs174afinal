@@ -18,6 +18,18 @@ public class InventoryDAO {
         }
     }
 
+    // Max stock level for an existing stock number. -1 if none.
+    public int getMaxStockLevel(String stockNumber) throws SQLException {
+        String sql = "SELECT max_stock_level FROM Inventory WHERE stock_number = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, stockNumber);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : -1;
+            }
+        }
+    }
+
     // Check item quantity by stock number, return {quantity, replenishment} array 
     public int[] getByStockNumber(String stockNumber) throws SQLException {
         String sql = "SELECT quantity, replenishment FROM Inventory WHERE stock_number = ?";

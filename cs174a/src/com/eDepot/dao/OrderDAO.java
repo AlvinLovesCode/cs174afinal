@@ -117,6 +117,19 @@ public class OrderDAO {
             pstmt.setString(2, manufacturer);
             pstmt.executeUpdate();
         }
+
+        // Bump the replenishment column by the quantity requested for each item in this order.
+        String updateReplenishment =
+            "UPDATE Inventory i SET replenishment = NVL(replenishment, 0) + " +
+            "(SELECT quantity_requested FROM ReplenishmentOrderItem r " +
+            " WHERE r.replenishment_order_id = ? AND r.stock_number = i.stock_number) " +
+            "WHERE i.stock_number IN " +
+            "(SELECT stock_number FROM ReplenishmentOrderItem WHERE replenishment_order_id = ?)";
+        try (PreparedStatement pstmt = conn.prepareStatement(updateReplenishment)) {
+            pstmt.setInt(1, repId);
+            pstmt.setInt(2, repId);
+            pstmt.executeUpdate();
+        }
         return repId;
     }
 }
