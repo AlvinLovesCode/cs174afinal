@@ -16,6 +16,7 @@ public class ShippingNoticeDAO {
             "min_stock_level, max_stock_level, location, replenishment) VALUES (?, ?, ?, 0, ?, ?, ?, ?)";
         String addReplenishment =
             "UPDATE Inventory SET replenishment = NVL(replenishment, 0) + ? WHERE stock_number = ?";
+        String selectMax = "SELECT max_stock_level FROM Inventory WHERE stock_number = ?";
         String insertItem =
             "INSERT INTO ShippingNoticeItem (notice_id, manufacturer, model_number, quantity) VALUES (?, ?, ?, ?)";
 
@@ -33,6 +34,24 @@ public class ShippingNoticeDAO {
                 }
 
                 for (ShippingItem item : items) {
+                    int maxLevel;
+                    if (item.isNew) {
+                        maxLevel = item.maxStockLevel;
+                    } else {
+                        try (PreparedStatement pstmt = conn.prepareStatement(selectMax)) {
+                            pstmt.setString(1, item.stockNumber);
+                            try (ResultSet rs = pstmt.executeQuery()) {
+                                rs.next();
+                                maxLevel = rs.getInt(1);
+                            }
+                        }
+                    }
+                    if (item.quantity > maxLevel) {
+                        throw new SQLException("Quantity " + item.quantity + " for " +
+                            item.manufacturer + " " + item.modelNumber +
+                            " exceeds the max stock level of " + maxLevel + ".");
+                    }
+
                     if (item.isNew) {
                         try (PreparedStatement pstmt = conn.prepareStatement(insertInventory)) {
                             pstmt.setString(1, item.stockNumber);
@@ -77,6 +96,8 @@ public class ShippingNoticeDAO {
         String updateInventory =
             "UPDATE Inventory SET quantity = quantity + ?, replenishment = NVL(replenishment, 0) - ? " +
             "WHERE manufacturer = ? AND model_number = ?";
+        String deleteItems = "DELETE FROM ShippingNoticeItem WHERE notice_id = ?";
+        String deleteNotice = "DELETE FROM ShippingNotice WHERE notice_id = ?";
 
         List<ShippingItem> applied = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection()) {
@@ -106,6 +127,16 @@ public class ShippingNoticeDAO {
                         pstmt.addBatch();
                     }
                     pstmt.executeBatch();
+                }
+
+                // Remove the notice so the same shipment can't be received again.
+                try (PreparedStatement pstmt = conn.prepareStatement(deleteItems)) {
+                    pstmt.setInt(1, noticeId);
+                    pstmt.executeUpdate();
+                }
+                try (PreparedStatement pstmt = conn.prepareStatement(deleteNotice)) {
+                    pstmt.setInt(1, noticeId);
+                    pstmt.executeUpdate();
                 }
 
                 conn.commit();

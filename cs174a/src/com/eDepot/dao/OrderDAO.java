@@ -9,16 +9,29 @@ import java.util.List;
 
 public class OrderDAO {
 
-    // Fill an order (might not use b/c done on eMART side)
-    public FillOrderResult fillOrder(int orderNumber, List<OrderItem> lines) throws SQLException {
+    // Fill an order identified only by its order number and decrement inventory as needed
+    // Also send a replenishment order if needed
+    public FillOrderResult fillOrder(int orderNumber) throws SQLException {
         FillOrderResult result = new FillOrderResult();
 
+        String selectOrderItems = "SELECT stock_number, quantity FROM OrderItems WHERE order_id = ?";
         String lockRow = "SELECT manufacturer, quantity FROM Inventory WHERE stock_number = ? FOR UPDATE";
         String decrement = "UPDATE Inventory SET quantity = quantity - ? WHERE stock_number = ?";
 
         try (Connection conn = DatabaseConnection.getConnection()) {
             conn.setAutoCommit(false);
             try {
+                // Pull the order's line items from the eMART order tables.
+                List<OrderItem> lines = new ArrayList<>();
+                try (PreparedStatement pstmt = conn.prepareStatement(selectOrderItems)) {
+                    pstmt.setInt(1, orderNumber);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        while (rs.next()) {
+                            lines.add(new OrderItem(rs.getString("stock_number"), rs.getInt("quantity")));
+                        }
+                    }
+                }
+
                 List<String> affectedManufacturers = new ArrayList<>();
 
                 for (OrderItem line : lines) {
@@ -102,6 +115,19 @@ public class OrderDAO {
         try (PreparedStatement pstmt = conn.prepareStatement(insertItems)) {
             pstmt.setInt(1, repId);
             pstmt.setString(2, manufacturer);
+            pstmt.executeUpdate();
+        }
+
+        // Bump the replenishment column by the quantity requested for each item in this order.
+        String updateReplenishment =
+            "UPDATE Inventory i SET replenishment = NVL(replenishment, 0) + " +
+            "(SELECT quantity_requested FROM ReplenishmentOrderItem r " +
+            " WHERE r.replenishment_order_id = ? AND r.stock_number = i.stock_number) " +
+            "WHERE i.stock_number IN " +
+            "(SELECT stock_number FROM ReplenishmentOrderItem WHERE replenishment_order_id = ?)";
+        try (PreparedStatement pstmt = conn.prepareStatement(updateReplenishment)) {
+            pstmt.setInt(1, repId);
+            pstmt.setInt(2, repId);
             pstmt.executeUpdate();
         }
         return repId;

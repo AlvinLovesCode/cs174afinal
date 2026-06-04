@@ -64,10 +64,10 @@ public class eDepotApp {
             String mfr = scanner.nextLine();
             System.out.print("  Model number: ");
             String model = scanner.nextLine();
-            int qty = readInt("  Quantity: ");
 
-            ShippingItem item = new ShippingItem(mfr, model, qty);
+            ShippingItem item = new ShippingItem(mfr, model, 0);
             String existing = inventoryDAO.findStockNumber(mfr, model);
+            int maxLevel;
             if (existing == null) {
                 System.out.println("  New product. Please provide inventory details.");
                 item.isNew = true;
@@ -76,9 +76,12 @@ public class eDepotApp {
                 item.maxStockLevel = readInt("    Maximum stock level: ");
                 System.out.print("    Location (e.g. A12): ");
                 item.location = scanner.nextLine();
+                maxLevel = item.maxStockLevel;
             } else {
                 item.stockNumber = existing;
+                maxLevel = inventoryDAO.getMaxStockLevel(existing);
             }
+            item.quantity = readQuantity("  Quantity: ", maxLevel);
             items.add(item);
         }
 
@@ -125,18 +128,13 @@ public class eDepotApp {
 
     private static void fillOrder() throws SQLException {
         int orderNumber = readInt("Order number being filled: ");
-        int count = readInt("How many distinct items in this order? ");
 
-        List<OrderItem> lines = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            System.out.println("-- Item " + (i + 1) + " --");
-            System.out.print("  Stock number: ");
-            String stock = scanner.nextLine();
-            int qty = readInt("  Quantity sold: ");
-            lines.add(new OrderItem(stock, qty));
+        FillOrderResult result = orderDAO.fillOrder(orderNumber);
+
+        if (result.fulfilled.isEmpty() && result.skipped.isEmpty()) {
+            System.out.println("Order #" + orderNumber + " was not found or has no items.");
+            return;
         }
-
-        FillOrderResult result = orderDAO.fillOrder(orderNumber, lines);
 
         System.out.println("\nOrder #" + orderNumber + " processed.");
         for (String f : result.fulfilled) {
@@ -151,7 +149,7 @@ public class eDepotApp {
     }
 
     // Prompt until the user enters an unused stock number in the XXnnnnn format: two
-    private static String readStockNumber(String prompt) {
+    private static String readStockNumber(String prompt) throws SQLException {
         while (true) {
             System.out.print(prompt);
             String value = scanner.nextLine().trim().toUpperCase();
@@ -161,6 +159,22 @@ public class eDepotApp {
             }
             if (inventoryDAO.getByStockNumber(value) != null) {
                 System.out.println("  Stock number " + value + " is already in use. Please enter a different one.");
+                continue;
+            }
+            return value;
+        }
+    }
+
+    // Read a quantity, re-prompting until it does not exceed the item's max stock level.
+    private static int readQuantity(String prompt, int maxLevel) {
+        while (true) {
+            int value = readInt(prompt);
+            if (value <= 0) {
+                System.out.println("  Quantity must be greater than zero.");
+                continue;
+            }
+            if (maxLevel >= 0 && value > maxLevel) {
+                System.out.println("  Quantity cannot exceed the max stock level of " + maxLevel + ".");
                 continue;
             }
             return value;
