@@ -125,18 +125,13 @@ public class eDepotApp {
 
     private static void fillOrder() throws SQLException {
         int orderNumber = readInt("Order number being filled: ");
-        int count = readInt("How many distinct items in this order? ");
 
-        List<OrderItem> lines = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            System.out.println("-- Item " + (i + 1) + " --");
-            System.out.print("  Stock number: ");
-            String stock = scanner.nextLine();
-            int qty = readInt("  Quantity sold: ");
-            lines.add(new OrderItem(stock, qty));
+        FillOrderResult result = orderDAO.fillOrder(orderNumber);
+
+        if (result.fulfilled.isEmpty() && result.skipped.isEmpty()) {
+            System.out.println("Order #" + orderNumber + " was not found or has no items.");
+            return;
         }
-
-        FillOrderResult result = orderDAO.fillOrder(orderNumber, lines);
 
         System.out.println("\nOrder #" + orderNumber + " processed.");
         for (String f : result.fulfilled) {
