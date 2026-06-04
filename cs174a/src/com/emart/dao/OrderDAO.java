@@ -35,6 +35,29 @@ public class OrderDAO {
 
         try (Connection conn = DatabaseConnection.getConnection()) {
             conn.setAutoCommit(false);
+
+            // 1. Check inventory for each item
+            String checkInvSql = "SELECT quantity FROM Inventory WHERE stock_number = ?";
+            
+            try (PreparedStatement checkStmt = conn.prepareStatement(checkInvSql)) {
+                for (OrderItem item : cart) {
+                    checkStmt.setString(1, item.stockNumber);
+                    try (ResultSet rs = checkStmt.executeQuery()) {
+                        if (rs.next()) {
+                            int available = rs.getInt("quantity");
+                            if (available < item.quantity) {
+                                conn.rollback();
+                                throw new SQLException("Insufficient inventory for item " + item.stockNumber + ". Available: " + available);
+                            }
+                        } else {
+                            conn.rollback();
+                            throw new SQLException("Item not found in inventory: " + item.stockNumber);
+                        }
+                    }
+                }
+            }
+
+            // 2. Insert into Orders
             try (PreparedStatement pstmt = conn.prepareStatement(sqlOrder, new String[]{"ORDER_ID"})) {
                 pstmt.setString(1, customer.customerId);
                 pstmt.setDouble(2, totalAmount);
@@ -49,6 +72,7 @@ public class OrderDAO {
                 }
             }
 
+            // 3. Insert into OrderItems
             String sqlItems = "INSERT INTO OrderItems (order_id, stock_number, quantity, price) VALUES (?, ?, ?, ?)";
             try (PreparedStatement pstmt = conn.prepareStatement(sqlItems)) {
                 for (OrderItem item : cart) {
@@ -64,6 +88,11 @@ public class OrderDAO {
             conn.commit();
             return orderId;
         } catch (SQLException e) {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                conn.rollback();
+            } catch (SQLException ex) {
+                // ignore
+            }
             throw e;
         }
     }

@@ -10,6 +10,8 @@ INSERT INTO SystemRules (rule_name, rule_value) VALUES ('SILVER_DISCOUNT_PERCENT
 INSERT INTO SystemRules (rule_name, rule_value) VALUES ('NEW_DISCOUNT_PERCENT', 10);
 INSERT INTO SystemRules (rule_name, rule_value) VALUES ('SHIPPING_FEE_PERCENT', 10);
 INSERT INTO SystemRules (rule_name, rule_value) VALUES ('SHIPPING_WAIVE_THRESHOLD', 100);
+INSERT INTO SystemRules (rule_name, rule_value) VALUES ('GOLD_STATUS_THRESHOLD', 500);
+INSERT INTO SystemRules (rule_name, rule_value) VALUES ('SILVER_STATUS_THRESHOLD', 100);
 COMMIT;
 
 
@@ -65,7 +67,6 @@ CREATE TABLE OrderItems (
     FOREIGN KEY (stock_number) REFERENCES Products(stock_number)
 );
 
--- 7. Managers
 CREATE TABLE Managers (
     manager_id VARCHAR2(50) PRIMARY KEY,
     password VARCHAR2(100)
