@@ -35,7 +35,6 @@ public class eMartApp {
                 }
             } catch (Exception e) {
                 System.out.println("An error occurred: " + e.getMessage());
-                scanner.nextLine(); // Clear scanner buffer on error
             }
         }
     }
@@ -48,6 +47,7 @@ public class eMartApp {
         System.out.println("5. Exit");
         System.out.print("Choose an option: ");
         int choice = Integer.parseInt(scanner.nextLine());
+        System.out.println();
         
         if (choice == 1) {
             System.out.print("Enter Customer ID: ");
@@ -101,17 +101,21 @@ public class eMartApp {
     private static void showCustomerMenu() throws SQLException {
         System.out.println("\n--- Customer Menu ---");
         System.out.println("1. Search Products");
-        System.out.println("2. View Cart");
-        System.out.println("3. Checkout");
+        System.out.println("2. Search Compatible Items");
+        System.out.println("3. View Cart");
         System.out.println("4. Display a Previous Order");
         System.out.println("5. Re-run a Previous Order");
         System.out.println("6. Logout");
         System.out.print("Choose an option: ");
         int choice = Integer.parseInt(scanner.nextLine());
+        System.out.println();
 
         if (choice == 1) {
-            System.out.print("Enter search keyword (or leave blank to list all): ");
+            System.out.print("Enter search keyword (or leave blank to go back): ");
             String keyword = scanner.nextLine();
+            if (keyword.trim().isEmpty()) {
+                return;
+            }
             List<Product> results = productDAO.searchProducts(keyword);
             
             if (results.isEmpty()) {
@@ -131,13 +135,38 @@ public class eMartApp {
                 if (p != null) {
                     System.out.print("Enter Quantity: ");
                     int qty = Integer.parseInt(scanner.nextLine());
-                    cart.add(new OrderItem(0, p.stockNumber, qty, p.price));
+                    boolean found = false;
+                    for (OrderItem item : cart) {
+                        if (item.stockNumber.equals(p.stockNumber)) {
+                            item.quantity += qty;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        cart.add(new OrderItem(0, p.stockNumber, qty, p.price));
+                    }
                     System.out.println("Added to cart!");
                 } else {
                     System.out.println("Product not found.");
                 }
             }
         } else if (choice == 2) {
+            System.out.print("Enter Stock Number to find compatible items for (or leave blank to go back): ");
+            String stockNum = scanner.nextLine();
+            if (stockNum.trim().isEmpty()) {
+                return;
+            }
+            List<Product> compatibles = productDAO.getCompatibleProducts(stockNum);
+            if (compatibles.isEmpty()) {
+                System.out.println("No compatible items found for " + stockNum);
+            } else {
+                System.out.println("\n--- Compatible Items for " + stockNum + " ---");
+                for (Product p : compatibles) {
+                    System.out.println(p);
+                }
+            }
+        } else if (choice == 3) {
             System.out.println("\n--- Cart Contents ---");
             if (cart.isEmpty()) {
                 System.out.println("Cart is empty.");
@@ -148,14 +177,71 @@ public class eMartApp {
                     total += (item.quantity * item.price);
                 }
                 System.out.println("Subtotal: $" + total);
-            }
-        } else if (choice == 3) {
-            if (cart.isEmpty()) {
-                System.out.println("Cannot checkout. Cart is empty.");
-            } else {
-                int orderId = orderDAO.checkout(loggedInCustomer, cart);
-                System.out.println("Checkout successful! Your Order ID is: " + orderId);
-                cart.clear();
+                
+                System.out.println("\n1. Checkout");
+                System.out.println("2. Remove Item from Cart");
+                System.out.print("Choose an option (or leave blank to go back): ");
+                String cartChoiceStr = scanner.nextLine();
+                if (cartChoiceStr.trim().isEmpty()) {
+                    System.out.println();
+                    return;
+                }
+                int cartChoice = Integer.parseInt(cartChoiceStr);
+                System.out.println();
+                
+                if (cartChoice == 1) {
+                    int orderId = orderDAO.checkout(loggedInCustomer, cart);
+                    System.out.println("\n--- Order " + orderId + " ---");
+                    System.out.println("Checkout successful! Your Order ID is: " + orderId);
+                    cart.clear();
+                } else if (cartChoice == 2) {
+                    System.out.print("Enter Stock Number to remove (or leave blank to go back): ");
+                    String stockNum = scanner.nextLine();
+                    if (stockNum.trim().isEmpty()) {
+                        return;
+                    }
+                    
+                    int totalQtyInCart = 0;
+                    for (OrderItem item : cart) {
+                        if (item.stockNumber.equals(stockNum)) {
+                            totalQtyInCart += item.quantity;
+                        }
+                    }
+                    
+                    if (totalQtyInCart == 0) {
+                        System.out.println("Item not found in cart.");
+                    } else {
+                        System.out.print("Enter quantity to remove (currently " + totalQtyInCart + " in cart): ");
+                        try {
+                            int qtyToRemove = Integer.parseInt(scanner.nextLine());
+                            if (qtyToRemove <= 0) {
+                                System.out.println("Invalid quantity.");
+                            } else if (qtyToRemove >= totalQtyInCart) {
+                                cart.removeIf(item -> item.stockNumber.equals(stockNum));
+                                System.out.println("All of this item removed from cart.");
+                            } else {
+                                int remainingToRemove = qtyToRemove;
+                                java.util.Iterator<OrderItem> iter = cart.iterator();
+                                while (iter.hasNext()) {
+                                    OrderItem item = iter.next();
+                                    if (item.stockNumber.equals(stockNum)) {
+                                        if (item.quantity <= remainingToRemove) {
+                                            remainingToRemove -= item.quantity;
+                                            iter.remove();
+                                        } else {
+                                            item.quantity -= remainingToRemove;
+                                            remainingToRemove = 0;
+                                            break;
+                                        }
+                                    }
+                                }
+                                System.out.println("Removed " + qtyToRemove + " of this item from cart.");
+                            }
+                        } catch (NumberFormatException e) {
+                            System.out.println("Invalid quantity entered.");
+                        }
+                    }
+                }
             }
         } else if (choice == 4) {
             System.out.print("Enter Order ID to display: ");
@@ -187,7 +273,17 @@ public class eMartApp {
                     for (OrderItem item : items) {
                         Product p = productDAO.getProductByStockNumber(item.stockNumber);
                         if (p != null) {
-                            cart.add(new OrderItem(0, p.stockNumber, item.quantity, p.price));
+                            boolean found = false;
+                            for (OrderItem cartItem : cart) {
+                                if (cartItem.stockNumber.equals(p.stockNumber)) {
+                                    cartItem.quantity += item.quantity;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) {
+                                cart.add(new OrderItem(0, p.stockNumber, item.quantity, p.price));
+                            }
                             System.out.println("Added Stock # " + p.stockNumber + " to cart at current price $" + p.price);
                         }
                     }
@@ -211,9 +307,11 @@ public class eMartApp {
         System.out.println("4. Send Order to Manufacturer");
         System.out.println("5. Change Product Price");
         System.out.println("6. Purge Old Sales Transactions");
-        System.out.println("7. Logout");
+        System.out.println("7. Change Customer Status Criteria");
+        System.out.println("8. Logout");
         System.out.print("Choose an option: ");
         int choice = Integer.parseInt(scanner.nextLine());
+        System.out.println();
 
         if (choice == 1) {
             System.out.print("Enter Month (1-12): ");
@@ -230,13 +328,35 @@ public class eMartApp {
             String status = scanner.nextLine();
             managerDAO.manualAdjustCustomerStatus(cid, status);
         } else if (choice == 4) {
-            System.out.print("Enter Manufacturer Name: ");
+            System.out.print("Enter Manufacturer: ");
             String mfg = scanner.nextLine();
-            System.out.print("Enter Stock Number: ");
-            String stockNum = scanner.nextLine();
+            System.out.print("Enter Model Number: ");
+            String model = scanner.nextLine();
+            
+            String stockNum = managerDAO.findStockNumberInInventory(mfg, model);
+            boolean isNew = false;
+            int minStock = 0;
+            int maxStock = 0;
+            String location = "";
+            
+            if (stockNum == null) {
+                System.out.println("  New product. Please provide inventory details.");
+                isNew = true;
+                System.out.print("    Stock number (format XXnnnnn, e.g. AB12345): ");
+                stockNum = scanner.nextLine();
+                System.out.print("    Minimum stock level: ");
+                minStock = Integer.parseInt(scanner.nextLine());
+                System.out.print("    Maximum stock level: ");
+                maxStock = Integer.parseInt(scanner.nextLine());
+                System.out.print("    Location (e.g. A12): ");
+                location = scanner.nextLine();
+            } else {
+                System.out.println("  Found existing product. Stock number: " + stockNum);
+            }
+            
             System.out.print("Enter Quantity to Order: ");
             int qty = Integer.parseInt(scanner.nextLine());
-            managerDAO.sendManufacturerOrder(mfg, stockNum, qty);
+            managerDAO.sendManufacturerOrder(mfg, stockNum, model, qty, isNew, minStock, maxStock, location);
         } else if (choice == 5) {
             System.out.print("Enter Stock Number: ");
             String stockNum = scanner.nextLine();
@@ -253,6 +373,21 @@ public class eMartApp {
                 System.out.println("Cancelled.");
             }
         } else if (choice == 7) {
+            double[] thresholds = managerDAO.getCustomerStatusThresholds();
+            System.out.println("Current Higher Threshold (Gold min / Silver max): $" + thresholds[0]);
+            System.out.println("Current Lower Threshold (Silver min / Green max): $" + thresholds[1]);
+            
+            System.out.print("Enter new Higher Threshold (or press enter to keep current): ");
+            String newGoldStr = scanner.nextLine();
+            double newGold = newGoldStr.isEmpty() ? thresholds[0] : Double.parseDouble(newGoldStr);
+            
+            System.out.print("Enter new Lower Threshold (or press enter to keep current): ");
+            String newSilverStr = scanner.nextLine();
+            double newSilver = newSilverStr.isEmpty() ? thresholds[1] : Double.parseDouble(newSilverStr);
+            
+            managerDAO.setCustomerStatusThresholds(newGold, newSilver);
+            System.out.println("Thresholds updated successfully.");
+        } else if (choice == 8) {
             isManagerLoggedIn = false;
             System.out.println("Manager logged out.");
         }

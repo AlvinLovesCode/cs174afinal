@@ -100,3 +100,16 @@ INSERT INTO Managers (manager_id, password) VALUES ('Swong', 'Swong');
 INSERT INTO Managers (manager_id, password) VALUES ('Tcodd', 'Tcodd');
 
 COMMIT;
+
+
+-- Data Reset
+
+DROP TABLE ReplenishmentOrderItem
+DROP TABLE ReplenishmentOrder
+DROP TABLE ShippingNoticeItem
+DROP TABLE ShippingNotice
+DROP TABLE Inventory
+
+
+
+

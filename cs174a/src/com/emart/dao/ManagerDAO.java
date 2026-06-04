@@ -114,8 +114,23 @@ public class ManagerDAO {
                 String cid = rs.getString("customer_id");
                 double total = rs.getDouble("total_sum");
                 String newStatus = "New";
-                if (total > 500) newStatus = "Gold";
-                else if (total > 100) newStatus = "Silver";
+                double goldThreshold = 500.0;
+                double silverThreshold = 100.0;
+                
+                String fetchRules = "SELECT rule_name, rule_value FROM SystemRules WHERE rule_name IN ('GOLD_STATUS_THRESHOLD', 'SILVER_STATUS_THRESHOLD')";
+                try (PreparedStatement ruleStmt = conn.prepareStatement(fetchRules);
+                     ResultSet ruleRs = ruleStmt.executeQuery()) {
+                    while (ruleRs.next()) {
+                        if ("GOLD_STATUS_THRESHOLD".equals(ruleRs.getString("rule_name"))) {
+                            goldThreshold = ruleRs.getDouble("rule_value");
+                        } else if ("SILVER_STATUS_THRESHOLD".equals(ruleRs.getString("rule_name"))) {
+                            silverThreshold = ruleRs.getDouble("rule_value");
+                        }
+                    }
+                }
+                
+                if (total > goldThreshold) newStatus = "Gold";
+                else if (total > silverThreshold) newStatus = "Silver";
                 else if (total > 0) newStatus = "Green";
                 
                 updatePstmt.setString(1, newStatus);
@@ -146,16 +161,68 @@ public class ManagerDAO {
         }
     }
 
-    public void sendManufacturerOrder(String manufacturer, String stockNumber, int quantity) {
-        System.out.println("\n==============================================");
-        System.out.println("              MANUFACTURER ORDER              ");
-        System.out.println("==============================================");
-        System.out.println("TO: " + manufacturer);
-        System.out.println("SHIP TO: eDEPOT WAREHOUSE DIRECTLY");
-        System.out.println("ITEM STOCK NO: " + stockNumber);
-        System.out.println("QUANTITY ORDERED: " + quantity);
-        System.out.println("==============================================");
-        System.out.println("Order successfully sent.");
+    public void sendManufacturerOrder(String manufacturer, String stockNumber, String modelNumber, int quantity, boolean isNew, int minStock, int maxStock, String location) throws SQLException {
+        String insertNotice = "INSERT INTO ShippingNotice (shipping_company) VALUES (?)";
+        String insertItem = "INSERT INTO ShippingNoticeItem (notice_id, manufacturer, model_number, quantity) VALUES (?, ?, ?, ?)";
+
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                int noticeId;
+                try (PreparedStatement pstmt = conn.prepareStatement(insertNotice, new String[]{"notice_id"})) {
+                    pstmt.setString(1, manufacturer);
+                    pstmt.executeUpdate();
+                    try (ResultSet rs = pstmt.getGeneratedKeys()) {
+                        rs.next();
+                        noticeId = rs.getInt(1);
+                    }
+                }
+
+                if (isNew) {
+                    String insertInventory = "INSERT INTO Inventory (stock_number, manufacturer, model_number, quantity, min_stock_level, max_stock_level, location, replenishment) VALUES (?, ?, ?, 0, ?, ?, ?, ?)";
+                    try (PreparedStatement pstmt = conn.prepareStatement(insertInventory)) {
+                        pstmt.setString(1, stockNumber);
+                        pstmt.setString(2, manufacturer);
+                        pstmt.setString(3, modelNumber);
+                        pstmt.setInt(4, minStock);
+                        pstmt.setInt(5, maxStock);
+                        pstmt.setString(6, location);
+                        pstmt.setInt(7, quantity);
+                        pstmt.executeUpdate();
+                    }
+                } else {
+                    String addReplenishment = "UPDATE Inventory SET replenishment = NVL(replenishment, 0) + ? WHERE stock_number = ?";
+                    try (PreparedStatement pstmt = conn.prepareStatement(addReplenishment)) {
+                        pstmt.setInt(1, quantity);
+                        pstmt.setString(2, stockNumber);
+                        pstmt.executeUpdate();
+                    }
+                }
+                try (PreparedStatement pstmt = conn.prepareStatement(insertItem)) {
+                    pstmt.setInt(1, noticeId);
+                    pstmt.setString(2, manufacturer);
+                    pstmt.setString(3, modelNumber);
+                    pstmt.setInt(4, quantity);
+                    pstmt.executeUpdate();
+                }
+
+                conn.commit();
+                
+                System.out.println("\n==============================================");
+                System.out.println("              MANUFACTURER ORDER              ");
+                System.out.println("==============================================");
+                System.out.println("TO: " + manufacturer);
+                System.out.println("SHIP TO: eDEPOT WAREHOUSE DIRECTLY");
+                System.out.println("ITEM STOCK NO: " + stockNumber);
+                System.out.println("QUANTITY ORDERED: " + quantity);
+                System.out.println("==============================================");
+                System.out.println("Order successfully sent. Shipping notice generated (Notice ID: " + noticeId + ").");
+
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        }
     }
 
     public void updateProductPrice(String stockNumber, double newPrice) throws SQLException {
@@ -187,6 +254,65 @@ public class ManagerDAO {
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             int rows = pstmt.executeUpdate();
             System.out.println("Purged " + rows + " old sales transactions (Soft Delete applied).");
+        }
+    }
+
+    public String findStockNumberInInventory(String manufacturer, String modelNumber) throws SQLException {
+        String sql = "SELECT stock_number FROM Inventory WHERE manufacturer = ? AND model_number = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, manufacturer);
+            pstmt.setString(2, modelNumber);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("stock_number");
+                }
+            }
+        }
+        return null;
+    }
+    
+    public double[] getCustomerStatusThresholds() throws SQLException {
+        double gold = 500.0;
+        double silver = 100.0;
+        String sql = "SELECT rule_name, rule_value FROM SystemRules WHERE rule_name IN ('GOLD_STATUS_THRESHOLD', 'SILVER_STATUS_THRESHOLD')";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                if ("GOLD_STATUS_THRESHOLD".equals(rs.getString("rule_name"))) {
+                    gold = rs.getDouble("rule_value");
+                } else if ("SILVER_STATUS_THRESHOLD".equals(rs.getString("rule_name"))) {
+                    silver = rs.getDouble("rule_value");
+                }
+            }
+        }
+        return new double[]{gold, silver};
+    }
+    
+    public void setCustomerStatusThresholds(double gold, double silver) throws SQLException {
+        String mergeSql = "MERGE INTO SystemRules sr " +
+                          "USING (SELECT ? AS rname, ? AS rval FROM DUAL) src " +
+                          "ON (sr.rule_name = src.rname) " +
+                          "WHEN MATCHED THEN UPDATE SET sr.rule_value = src.rval " +
+                          "WHEN NOT MATCHED THEN INSERT (rule_name, rule_value) VALUES (src.rname, src.rval)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(mergeSql)) {
+            conn.setAutoCommit(false);
+            try {
+                pstmt.setString(1, "GOLD_STATUS_THRESHOLD");
+                pstmt.setDouble(2, gold);
+                pstmt.executeUpdate();
+                
+                pstmt.setString(1, "SILVER_STATUS_THRESHOLD");
+                pstmt.setDouble(2, silver);
+                pstmt.executeUpdate();
+                
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
         }
     }
 }

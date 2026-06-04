@@ -36,12 +36,10 @@ public class OrderDAO {
         try (Connection conn = DatabaseConnection.getConnection()) {
             conn.setAutoCommit(false);
 
-            // 1. Check and deduct inventory for each item
-            String checkInvSql = "SELECT quantity FROM Inventory WHERE stock_number = ? FOR UPDATE";
-            String updateInvSql = "UPDATE Inventory SET quantity = quantity - ? WHERE stock_number = ?";
+            // 1. Check inventory for each item
+            String checkInvSql = "SELECT quantity FROM Inventory WHERE stock_number = ?";
             
-            try (PreparedStatement checkStmt = conn.prepareStatement(checkInvSql);
-                 PreparedStatement updateStmt = conn.prepareStatement(updateInvSql)) {
+            try (PreparedStatement checkStmt = conn.prepareStatement(checkInvSql)) {
                 for (OrderItem item : cart) {
                     checkStmt.setString(1, item.stockNumber);
                     try (ResultSet rs = checkStmt.executeQuery()) {
@@ -56,9 +54,6 @@ public class OrderDAO {
                             throw new SQLException("Item not found in inventory: " + item.stockNumber);
                         }
                     }
-                    updateStmt.setInt(1, item.quantity);
-                    updateStmt.setString(2, item.stockNumber);
-                    updateStmt.executeUpdate();
                 }
             }
 
